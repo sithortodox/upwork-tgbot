@@ -5,9 +5,7 @@ from aiogram import Router
 from aiogram.filters import Command, CommandStart
 from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
-import aiohttp
 import structlog
-from app.config import settings
 from app.keyboard.inline import get_main_menu_kb, get_back_kb
 
 router = Router()
@@ -16,24 +14,12 @@ logger = structlog.get_logger()
 @router.message(CommandStart())
 async def cmd_start(message: Message, state: FSMContext):
     await state.clear()
-    
-    async with aiohttp.ClientSession() as session:
-        async with session.post(
-            f"{settings.API_GATEWAY_URL}/users/",
-            json={"telegram_id": message.from_user.id, "username": message.from_user.username}
-        ) as resp:
-            if resp.status == 200:
-                user_data = await resp.json()
-            else:
-                user_data = {"plan": "free", "ai_generations_today": 0}
-    
-    plan_emoji = "💎" if user_data.get("plan") == "pro" else "🆓"
+    logger.info("start_command", user_id=message.from_user.id, username=message.from_user.username)
     
     await message.answer(
-        f"👋 Добро пожаловать!\n\n"
-        f"Я помогу вам находить проекты на Upwork и создавать отклики с помощью AI.\n\n"
-        f"Ваш план: {plan_emoji} {user_data.get('plan', 'free').upper()}\n\n"
-        f"Выберите действие:",
+        "👋 Добро пожаловать!\n\n"
+        "Я помогу вам находить проекты на Upwork и создавать отклики с помощью AI.\n\n"
+        "Выберите действие:",
         reply_markup=get_main_menu_kb()
     )
 
