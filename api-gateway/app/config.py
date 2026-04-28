@@ -10,6 +10,9 @@ class Settings(BaseSettings):
     YOOKASSA_SHOP_ID: str = ""
     YOOKASSA_SECRET_KEY: str = ""
     FREE_DAILY_AI_LIMIT: int = 5
+    UPWORK_CLIENT_ID: str = ""
+    UPWORK_CLIENT_SECRET: str = ""
+    UPWORK_REDIRECT_URI: str = "https://t.me/test_upwork_test_bot"
     
     class Config:
         env_file = ".env"
