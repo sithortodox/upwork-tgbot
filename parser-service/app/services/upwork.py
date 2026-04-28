@@ -13,7 +13,7 @@ from app.config import settings
 from shared.database import async_session
 from shared.models_db import Project, UserSession
 from shared.utils import format_list_field, parse_list_field
-from services.cache import CacheService
+from app.services.cache import CacheService
 from sqlalchemy import select
 import redis.asyncio as redis
 
