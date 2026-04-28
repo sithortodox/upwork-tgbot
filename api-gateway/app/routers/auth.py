@@ -33,6 +33,7 @@ class CredentialsLogin(BaseModel):
 
 class CookiesUpdate(BaseModel):
     cookies: str
+    format: Optional[str] = "auto"  # auto, json, string
 
 @router.post("/credentials/{user_id}")
 async def login_with_credentials(
@@ -93,7 +94,26 @@ async def update_cookies(
         user_session = UserSession(user_id=user.id)
         db.add(user_session)
     
-    user_session.cookies = data.cookies
+    cookies_str = data.cookies.strip()
+    
+    if cookies_str.startswith("["):
+        cookies_json = cookies_str
+    else:
+        import json as json_mod
+        cookies_list = []
+        for cookie in cookies_str.split(";"):
+            cookie = cookie.strip()
+            if "=" in cookie:
+                name, value = cookie.split("=", 1)
+                cookies_list.append({
+                    "name": name.strip(),
+                    "value": value.strip(),
+                    "domain": ".upwork.com",
+                    "path": "/"
+                })
+        cookies_json = json_mod.dumps(cookies_list)
+    
+    user_session.cookies = cookies_json
     user_session.cookies_updated_at = datetime.utcnow()
     user_session.login_status = "active"
     
