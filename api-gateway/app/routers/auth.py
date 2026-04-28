@@ -187,10 +187,11 @@ async def unlink_account(
 
 @router.post("/login/{user_id}")
 async def trigger_login(user_id: int):
-    async with httpx.AsyncClient(timeout=120.0) as client:
+    async with httpx.AsyncClient(timeout=180.0) as client:
         try:
             response = await client.post(
-                f"{settings.PARSER_SERVICE_URL}/auth/login/{user_id}"
+                f"{settings.PARSER_SERVICE_URL}/auth/login/{user_id}",
+                timeout=180.0
             )
             return response.json()
         except Exception as e:

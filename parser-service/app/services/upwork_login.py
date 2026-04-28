@@ -26,7 +26,8 @@ class UpworkLoginService:
             
             launch_args = {
                 "headless": headless,
-                "args": ["--disable-blink-features=AutomationControlled"]
+                "args": ["--disable-blink-features=AutomationControlled"],
+                "timeout": 60000
             }
             
             if self.proxy_url:
@@ -42,12 +43,15 @@ class UpworkLoginService:
         context_args = {
             "viewport": {"width": 1280, "height": 720},
             "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "timeout": 60000
         }
         
         if self.proxy_url:
             context_args["proxy"] = {"server": self.proxy_url}
         
         self._context = await browser.new_context(**context_args)
+        self._context.set_default_timeout(60000)
+        self._context.set_default_navigation_timeout(60000)
         
         if cookies:
             try:
