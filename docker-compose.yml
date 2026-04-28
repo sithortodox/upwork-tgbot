@@ -1,0 +1,100 @@
+version: '3.8'
+
+services:
+  telegram-bot:
+    build:
+      context: .
+      dockerfile: telegram-bot/Dockerfile
+    container_name: upwork-telegram-bot
+    env_file: .env
+    depends_on:
+      - api-gateway
+      - redis
+    networks:
+      - upwork-network
+    restart: unless-stopped
+
+  api-gateway:
+    build:
+      context: .
+      dockerfile: api-gateway/Dockerfile
+    container_name: upwork-api-gateway
+    env_file: .env
+    ports:
+      - "8080:8000"
+    depends_on:
+      - redis
+      - db
+    networks:
+      - upwork-network
+    restart: unless-stopped
+
+  parser-service:
+    build:
+      context: .
+      dockerfile: parser-service/Dockerfile
+    container_name: upwork-parser-service
+    env_file: .env
+    depends_on:
+      - redis
+      - db
+    networks:
+      - upwork-network
+    restart: unless-stopped
+
+  ai-service:
+    build:
+      context: .
+      dockerfile: ai-service/Dockerfile
+    container_name: upwork-ai-service
+    env_file: .env
+    depends_on:
+      - redis
+      - db
+    networks:
+      - upwork-network
+    restart: unless-stopped
+
+  notification-service:
+    build:
+      context: .
+      dockerfile: notification-service/Dockerfile
+    container_name: upwork-notification-service
+    env_file: .env
+    depends_on:
+      - api-gateway
+      - redis
+    networks:
+      - upwork-network
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: upwork-redis
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - upwork-network
+    restart: unless-stopped
+
+  db:
+    image: postgres:15-alpine
+    container_name: upwork-postgres
+    env_file: .env
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - upwork-network
+    restart: unless-stopped
+
+networks:
+  upwork-network:
+    driver: bridge
+
+volumes:
+  redis_data:
+  postgres_data:
