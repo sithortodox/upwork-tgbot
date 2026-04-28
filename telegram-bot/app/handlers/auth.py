@@ -16,10 +16,9 @@ class AuthFSM(StatesGroup):
 
 @router.callback_query(F.data == "auth_start")
 async def start_auth(callback: CallbackQuery, state: FSMContext):
-    await callback.message.edit_text(
-        "<b>🔐 Авторизация Upwork</b>\n\n"
-        "Функция временно недоступна.\n"
-        "Требуется подключение к API.",
-        reply_markup=get_back_kb("settings")
-    )
+    text = "<b>🔐 Авторизация Upwork</b>\n\n"
+    text += "⚠️ Для авторизации требуется настроить Upwork API.\n\n"
+    text += "Текущая версия работает в демо-режиме с тестовыми данными."
+    
+    await callback.message.edit_text(text, reply_markup=get_back_kb("settings"))
     await callback.answer()
