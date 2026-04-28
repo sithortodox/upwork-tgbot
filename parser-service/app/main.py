@@ -11,6 +11,9 @@ from app.services.cache import CacheService
 from shared.database import init_db
 import structlog
 import asyncio
+from datetime import datetime
+
+logger = structlog.get_logger()
 
 structlog.configure(
     processors=[
@@ -82,3 +85,75 @@ async def refresh_projects():
 @app.get("/categories")
 async def get_categories():
     return await CacheService.get_categories()
+
+@app.post("/auth/login/{user_id}")
+async def login_upwork(user_id: int):
+    from app.services.upwork_login import upwork_login_service
+    from shared.database import async_session
+    from shared.models_db import User, UserSession
+    from sqlalchemy import select
+    from shared.crypto import crypto_service
+    
+    async with async_session() as db:
+        result = await db.execute(select(User).where(User.telegram_id == user_id))
+        user = result.scalar_one_or_none()
+        
+        if not user:
+            return {"status": "error", "message": "User not found"}
+        
+        session_result = await db.execute(
+            select(UserSession).where(UserSession.user_id == user.id)
+        )
+        user_session = session_result.scalar_one_or_none()
+        
+        if not user_session:
+            return {"status": "error", "message": "No session data"}
+        
+        if not user_session.upwork_email or not user_session.upwork_password_encrypted:
+            return {"status": "error", "message": "No credentials stored"}
+        
+        password = crypto_service.decrypt(user_session.upwork_password_encrypted)
+        totp_secret = None
+        if user_session.upwork_2fa_secret:
+            totp_secret = crypto_service.decrypt(user_session.upwork_2fa_secret)
+        
+        user_session.login_status = "in_progress"
+        await db.commit()
+    
+    try:
+        result = await upwork_login_service.login(
+            email=user_session.upwork_email,
+            password=password,
+            totp_secret=totp_secret,
+            existing_cookies=user_session.cookies,
+            headless=True
+        )
+        
+        async with async_session() as db:
+            session_result = await db.execute(
+                select(UserSession).where(UserSession.user_id == user.id)
+            )
+            user_session = session_result.scalar_one_or_none()
+            
+            if result["success"]:
+                user_session.cookies = result["cookies"]
+                user_session.cookies_updated_at = datetime.utcnow()
+                user_session.login_status = "active"
+                await db.commit()
+                return {"status": "success", "message": "Login successful"}
+            else:
+                user_session.login_status = "failed"
+                await db.commit()
+                return {"status": "error", "message": result.get("error", "Login failed")}
+    
+    except Exception as e:
+        async with async_session() as db:
+            session_result = await db.execute(
+                select(UserSession).where(UserSession.user_id == user.id)
+            )
+            user_session = session_result.scalar_one_or_none()
+            user_session.login_status = "failed"
+            await db.commit()
+        
+        logger.error("login_exception", error=str(e))
+        return {"status": "error", "message": str(e)}

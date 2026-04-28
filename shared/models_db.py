@@ -38,6 +38,12 @@ class UserSession(Base):
     token_expires_at = Column(DateTime, nullable=True)
     upwork_user_id = Column(String(50), nullable=True)
     proxy_url = Column(String(255), nullable=True)
+    upwork_email = Column(String(255), nullable=True)
+    upwork_password_encrypted = Column(Text, nullable=True)
+    upwork_2fa_secret = Column(String(255), nullable=True)
+    cookies = Column(Text, nullable=True)
+    cookies_updated_at = Column(DateTime, nullable=True)
+    login_status = Column(String(20), default="not_configured")
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     

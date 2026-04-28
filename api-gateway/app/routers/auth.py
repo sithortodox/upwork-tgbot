@@ -6,11 +6,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel
 from typing import Optional
+from datetime import datetime
 from shared.database import get_db
 from shared.models_db import User, UserSession
 from shared.utils import generate_referral_code
-from app.services.upwork_oauth import upwork_oauth
+from shared.crypto import crypto_service
+from app.config import settings
 import structlog
+import json
+import httpx
 
 router = APIRouter()
 logger = structlog.get_logger()
@@ -22,22 +26,20 @@ class AuthCallback(BaseModel):
 class ProxyUpdate(BaseModel):
     proxy_url: Optional[str] = None
 
-@router.get("/url/{user_id}")
-async def get_auth_url(user_id: int):
-    auth_url = upwork_oauth.generate_auth_url(user_id)
-    return {"auth_url": auth_url}
+class CredentialsLogin(BaseModel):
+    email: str
+    password: str
+    totp_secret: Optional[str] = None
 
-@router.post("/callback/{user_id}")
-async def auth_callback(
+class CookiesUpdate(BaseModel):
+    cookies: str
+
+@router.post("/credentials/{user_id}")
+async def login_with_credentials(
     user_id: int,
-    data: AuthCallback,
+    data: CredentialsLogin,
     db: AsyncSession = Depends(get_db)
 ):
-    if data.state:
-        validated_user_id = upwork_oauth.validate_state(data.state)
-        if not validated_user_id or validated_user_id != user_id:
-            raise HTTPException(status_code=400, detail="Invalid state")
-    
     result = await db.execute(select(User).where(User.telegram_id == user_id))
     user = result.scalar_one_or_none()
     
@@ -50,11 +52,6 @@ async def auth_callback(
         await db.commit()
         await db.refresh(user)
     
-    token_data = await upwork_oauth.exchange_code(data.code)
-    
-    if not token_data:
-        raise HTTPException(status_code=400, detail="Failed to exchange code")
-    
     session_result = await db.execute(
         select(UserSession).where(UserSession.user_id == user.id)
     )
@@ -64,23 +61,21 @@ async def auth_callback(
         user_session = UserSession(user_id=user.id)
         db.add(user_session)
     
-    user_session.access_token = token_data.get("access_token")
-    user_session.refresh_token = token_data.get("refresh_token")
-    
-    expires_in = token_data.get("expires_in", 86400)
-    user_session.token_expires_at = upwork_oauth.calculate_expires_at(expires_in)
-    
-    if "user_id" in token_data:
-        user_session.upwork_user_id = token_data["user_id"]
+    user_session.upwork_email = data.email
+    user_session.upwork_password_encrypted = crypto_service.encrypt(data.password)
+    if data.totp_secret:
+        user_session.upwork_2fa_secret = crypto_service.encrypt(data.totp_secret)
+    user_session.login_status = "pending"
     
     await db.commit()
     
-    logger.info("user_authenticated", user_id=user.id, has_token=bool(user_session.access_token))
-    return {"status": "success", "user_id": user.id}
+    logger.info("credentials_saved", user_id=user.id)
+    return {"status": "success", "message": "Credentials saved. Login will be processed."}
 
-@router.post("/refresh/{user_id}")
-async def refresh_auth(
+@router.post("/cookies/{user_id}")
+async def update_cookies(
     user_id: int,
+    data: CookiesUpdate,
     db: AsyncSession = Depends(get_db)
 ):
     result = await db.execute(select(User).where(User.telegram_id == user_id))
@@ -94,20 +89,13 @@ async def refresh_auth(
     )
     user_session = session_result.scalar_one_or_none()
     
-    if not user_session or not user_session.refresh_token:
-        raise HTTPException(status_code=400, detail="No refresh token")
+    if not user_session:
+        user_session = UserSession(user_id=user.id)
+        db.add(user_session)
     
-    token_data = await upwork_oauth.refresh_token(user_session.refresh_token)
-    
-    if not token_data:
-        raise HTTPException(status_code=400, detail="Failed to refresh token")
-    
-    user_session.access_token = token_data.get("access_token")
-    if token_data.get("refresh_token"):
-        user_session.refresh_token = token_data["refresh_token"]
-    
-    expires_in = token_data.get("expires_in", 86400)
-    user_session.token_expires_at = upwork_oauth.calculate_expires_at(expires_in)
+    user_session.cookies = data.cookies
+    user_session.cookies_updated_at = datetime.utcnow()
+    user_session.login_status = "active"
     
     await db.commit()
     
@@ -122,24 +110,29 @@ async def get_auth_status(
     user = result.scalar_one_or_none()
     
     if not user:
-        return {"authenticated": False, "has_session": False}
+        return {"authenticated": False, "has_session": False, "status": "not_registered"}
     
     session_result = await db.execute(
         select(UserSession).where(UserSession.user_id == user.id)
     )
     user_session = session_result.scalar_one_or_none()
     
-    if not user_session or not user_session.access_token:
-        return {"authenticated": False, "has_session": False}
+    if not user_session:
+        return {"authenticated": False, "has_session": False, "status": "not_configured"}
     
-    from datetime import datetime
-    is_expired = user_session.token_expires_at and user_session.token_expires_at < datetime.utcnow()
+    has_cookies = bool(user_session.cookies)
+    has_credentials = bool(user_session.upwork_email and user_session.upwork_password_encrypted)
+    
+    login_status = user_session.login_status or "not_configured"
     
     return {
-        "authenticated": not is_expired,
-        "has_session": True,
-        "expires_at": user_session.token_expires_at.isoformat() if user_session.token_expires_at else None,
-        "upwork_user_id": user_session.upwork_user_id
+        "authenticated": has_cookies,
+        "has_session": has_cookies or has_credentials,
+        "status": login_status,
+        "has_credentials": has_credentials,
+        "email": user_session.upwork_email,
+        "has_2fa": bool(user_session.upwork_2fa_secret),
+        "cookies_updated": user_session.cookies_updated_at.isoformat() if user_session.cookies_updated_at else None
     }
 
 @router.post("/proxy/{user_id}")
@@ -191,3 +184,15 @@ async def unlink_account(
     
     logger.info("account_unlinked", user_id=user.id)
     return {"status": "success"}
+
+@router.post("/login/{user_id}")
+async def trigger_login(user_id: int):
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        try:
+            response = await client.post(
+                f"{settings.PARSER_SERVICE_URL}/auth/login/{user_id}"
+            )
+            return response.json()
+        except Exception as e:
+            logger.error("login_trigger_error", error=str(e))
+            return {"status": "error", "message": str(e)}
