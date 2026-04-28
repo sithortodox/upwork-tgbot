@@ -5,6 +5,7 @@ import json
 import asyncio
 from typing import Optional, Dict, Any
 from playwright.async_api import async_playwright, Browser, Page, BrowserContext
+from playwright_stealth import stealth_async
 from datetime import datetime
 import structlog
 
@@ -78,6 +79,7 @@ class UpworkLoginService:
         try:
             context = await self._create_context(existing_cookies)
             page = await context.new_page()
+            await stealth_async(page)
             
             await page.goto(self.UPWORK_HOME_URL, wait_until="networkidle")
             
@@ -161,6 +163,7 @@ class UpworkLoginService:
         try:
             context = await self._create_context(cookies)
             page = await context.new_page()
+            await stealth_async(page)
             
             url = self.UPWORK_FIND_WORK_URL
             if search_query:
