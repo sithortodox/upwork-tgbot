@@ -7,11 +7,10 @@ services:
       dockerfile: telegram-bot/Dockerfile
     container_name: upwork-telegram-bot
     env_file: .env
+    network_mode: host
     depends_on:
       - api-gateway
       - redis
-    networks:
-      - upwork-network
     restart: unless-stopped
 
   api-gateway:

@@ -9,6 +9,7 @@ from aiogram.enums import ParseMode
 from aiogram.client.default import DefaultBotProperties
 from aiogram.client.session.aiohttp import AiohttpSession
 from app.config import settings
+from app.handlers import start, projects, filters, ai_handler, subscription, settings_handler, auth
 
 structlog.configure(
     processors=[
