@@ -22,12 +22,16 @@ RUN apt-get update && apt-get install -y \
     libasound2 \
     libpango-1.0-0 \
     libcairo2 \
+    fonts-liberation \
+    fonts-noto-color-emoji \
+    libx11-xcb1 \
+    libxcb-dri3-0 \
+    libxshmfence1 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY parser-service/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 RUN playwright install chromium
-RUN playwright install-deps chromium
 
 COPY shared/ /app/shared/
 COPY parser-service/app/ /app/app/
