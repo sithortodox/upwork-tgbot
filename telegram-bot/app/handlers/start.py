@@ -1,7 +1,7 @@
 import sys
 sys.path.insert(0, '/app')
 
-from aiogram import Router
+from aiogram import Router, F
 from aiogram.filters import Command, CommandStart
 from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
@@ -47,7 +47,7 @@ async def cmd_help(message: Message):
         "• Приглашайте друзей и получайте бонусные дни Pro"
     )
 
-@router.callback_query(lambda c: c.data == "main")
+@router.callback_query(F.data == "main")
 async def to_main_menu(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await callback.message.edit_text(
