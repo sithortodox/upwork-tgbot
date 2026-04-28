@@ -23,12 +23,14 @@ class SettingsFSM(StatesGroup):
 async def show_settings(callback: CallbackQuery, state: FSMContext):
     await state.set_state(SettingsFSM.main)
     
-    user_status = await api.get(f"/users/status/{callback.from_user.id}")
+    auth_status = await api.get(f"/auth/status/{callback.from_user.id}")
     notif_settings = await api.get(f"/subscription/{callback.from_user.id}/notifications")
     
     has_session = False
-    if user_status:
-        has_session = user_status.get("has_session", False)
+    authenticated = False
+    if auth_status:
+        has_session = auth_status.get("has_session", False)
+        authenticated = auth_status.get("authenticated", False)
     
     enabled = True
     schedule = "immediate"
@@ -36,7 +38,13 @@ async def show_settings(callback: CallbackQuery, state: FSMContext):
         enabled = notif_settings.get("enabled", True)
         schedule = notif_settings.get("schedule", "immediate")
     
-    session_status = "✅ Подключен" if has_session else "❌ Не подключен"
+    if authenticated:
+        session_status = "✅ Подключен"
+    elif has_session:
+        session_status = "⚠️ Токен истек"
+    else:
+        session_status = "❌ Не подключен"
+    
     notif_status = "✅ Включены" if enabled else "❌ Выключены"
     
     schedule_names = {"immediate": "Сразу", "hourly": "Раз в час", "daily": "Раз в день"}
@@ -143,15 +151,3 @@ async def confirm_unlink(callback: CallbackQuery, state: FSMContext):
         await callback.answer("Ошибка")
     
     await state.clear()
-
-@router.callback_query(F.data == "auth_start")
-async def start_auth(callback: CallbackQuery, state: FSMContext):
-    text = "<b>🔐 Авторизация Upwork</b>\n\n"
-    text += "⚠️ Для полной авторизации требуется настройка Upwork API.\n\n"
-    text += "Требуется:\n"
-    text += "1. Создать приложение на Upwork\n"
-    text += "2. Получить Client ID и Secret\n"
-    text += "3. Добавить в конфигурацию"
-    
-    await callback.message.edit_text(text, reply_markup=get_back_kb("settings"))
-    await callback.answer()
